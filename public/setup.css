@@ -1,0 +1,119 @@
+/* ============================================================
+   Setup guide - components ported from the Tally Connector page
+   so the Sheets and Excel guides look like the same product.
+
+   Everything here uses the tokens already in styles.css.
+   ============================================================ */
+
+/* ── integration header ── */
+.int-card {
+  display: flex; align-items: flex-start; gap: 16px;
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px; margin-bottom: 20px;
+}
+.int-logo {
+  width: 52px; height: 52px; border-radius: 12px; flex: 0 0 auto;
+  display: grid; place-items: center; background: var(--canvas);
+  border: 1px solid var(--line);
+}
+.int-main { flex: 1; min-width: 0; }
+.int-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.int-title h2 { font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
+.badge-official {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  background: var(--brand-soft); color: var(--brand); padding: 3px 9px; border-radius: 6px;
+}
+.int-desc { color: var(--ink-2); font-size: 13.5px; margin-top: 6px; line-height: 1.6; }
+.int-meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; }
+.int-meta div span { display: block; color: var(--ink-3); font-size: 11px; }
+.int-meta div b { font-weight: 600; }
+
+/* ── before you begin ── */
+.guide-intro { margin-bottom: 22px; }
+.req-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 9px;
+}
+.req {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--canvas); border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 13px; font-size: 12.5px;
+}
+.req svg { flex: 0 0 auto; color: var(--ink-3); }
+
+/* ── numbered steps ── */
+.gstep { display: flex; gap: 16px; margin-bottom: 14px; }
+.gstep-rail { display: flex; flex-direction: column; align-items: center; flex: 0 0 auto; padding-top: 4px; }
+.gstep-node {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brand); color: #fff; font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.gstep-line { flex: 1; width: 2px; background: var(--line); margin-top: 8px; min-height: 20px; }
+.gstep:last-of-type .gstep-line { display: none; }
+
+.gstep-card {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 22px;
+  background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 20px;
+}
+.gstep-card.reverse .gstep-text { order: 2; }
+.gstep-card.reverse .gstep-media { order: 1; }
+.gstep-text { min-width: 0; }
+.gstep-media { min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
+
+.eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 5px;
+}
+.gstep-text h3 { font-size: 16px; font-weight: 640; letter-spacing: -.01em; }
+.gstep-text > p.muted { margin: 6px 0 12px; line-height: 1.65; }
+
+.steps-ol { margin: 0 0 14px 18px; padding: 0; }
+.steps-ol li { font-size: 13px; margin-bottom: 7px; line-height: 1.6; }
+.steps-ol code, .note code, .info-box code {
+  background: var(--canvas); border: 1px solid var(--line); border-radius: 5px;
+  padding: 1px 6px; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+}
+
+.note {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 12px; color: var(--ink-2); line-height: 1.6; margin-top: 12px;
+}
+.note svg { flex: 0 0 auto; margin-top: 2px; color: var(--warn); }
+
+.info-box {
+  background: var(--brand-soft); border: 1px solid #C7D9FF; border-radius: 10px;
+  padding: 12px 14px; margin-top: 12px; font-size: 12.5px; line-height: 1.6; color: #1E3A8A;
+}
+.info-title { display: flex; align-items: center; gap: 7px; font-weight: 640; margin-bottom: 4px; }
+
+/* ── screenshot placeholder ── */
+.shot {
+  width: 100%; border: 1px solid var(--line); border-radius: 11px; overflow: hidden;
+  background: var(--canvas); margin: 0;
+}
+.shot-bar {
+  display: flex; align-items: center; gap: 6px;
+  background: #fff; border-bottom: 1px solid var(--line); padding: 8px 11px;
+}
+.shot-bar .sdot { width: 8px; height: 8px; border-radius: 50%; }
+.sdot-r { background: #FF5F57; } .sdot-y { background: #FEBC2E; } .sdot-g { background: #28C840; }
+.shot-bar-title { font-size: 11px; color: var(--ink-3); margin-left: 6px; }
+.shot-img { width: 100%; display: block; }
+.shot + .shot { margin-top: 12px; }
+
+/* ── final call to action ── */
+.cta {
+  background: var(--brand); border-radius: 14px; padding: 24px; color: #fff;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 8px;
+}
+.cta-main { flex: 1; min-width: 230px; }
+.cta h3 { font-size: 17px; font-weight: 650; }
+.cta p { font-size: 13px; opacity: .9; margin-top: 5px; line-height: 1.6; }
+.btn-white { background: #fff; color: var(--brand); font-weight: 600; }
+.btn-white:hover { background: #F1F5FF; }
+
+@media (max-width: 900px) {
+  .gstep-card { grid-template-columns: 1fr; }
+  .gstep-card.reverse .gstep-text { order: 1; }
+  .gstep-card.reverse .gstep-media { order: 2; }
+}

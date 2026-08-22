@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# local state and secrets - never commit these
+.env
+data.json
+uploads/
+
+# editor and OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
