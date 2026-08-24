@@ -60,14 +60,41 @@ function msg(id, text, kind) {
   el.textContent = text;
 }
 
+const PAGE_TITLES = {
+  connect: 'Connections',
+  tasks: 'Tasks',
+  'guide-sheets': 'Google Sheets guide',
+  'guide-excel': 'Excel and CSV guide'
+};
+
 function goto(page) {
   document.querySelectorAll('.nav-item').forEach(b =>
     b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p =>
     p.classList.toggle('active', p.id === 'page-' + page));
+  const crumb = document.getElementById('crumb');
+  if (crumb) crumb.textContent = PAGE_TITLES[page] || '';
   if (page === 'tasks') loadTasks();
   if (page.startsWith('guide-')) renderGuide(page);
 }
+
+/** The sidebar clock, as on the rest of the AJEMS product. */
+(function startClock() {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function tick() {
+    const t = document.getElementById('clockTime');
+    const d = document.getElementById('clockDate');
+    if (!t || !d) return;
+    const n = new Date();
+    t.textContent = n.getHours() + ':' + String(n.getMinutes()).padStart(2, '0');
+    d.textContent = days[n.getDay()] + ', ' + n.getDate() + ' ' +
+                    months[n.getMonth()] + ', ' + n.getFullYear();
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
 
 // ══════════ boot ══════════
 
@@ -103,33 +130,24 @@ async function refreshStatus() {
   const gp = $('googlePill');
   if (STATUS.signedIn) {
     gp.textContent = STATUS.email || 'Signed in';
-    gp.className = 'pill on';
+    gp.className = 'status status-ok';
     $('btnSignIn').lastChild.textContent = ' Switch Google account';
     $('btnSignOut').style.display = '';
   } else {
     gp.textContent = 'Not signed in';
-    gp.className = 'pill off';
+    gp.className = 'status status-warn';
     $('btnSignOut').style.display = 'none';
   }
 
   const ap = $('ajemsPill');
   if (STATUS.ajems.verified) {
     ap.textContent = STATUS.ajems.tenant;
-    ap.className = 'pill on';
+    ap.className = 'status status-ok';
   } else {
     ap.textContent = 'Not connected';
-    ap.className = 'pill off';
+    ap.className = 'status status-warn';
   }
   if (STATUS.ajems.baseUrl) $('ajemsUrl').value = STATUS.ajems.baseUrl;
-
-  $('tickConnect').className = 'tick' +
-    (STATUS.signedIn && STATUS.ajems.verified ? ' on' : '');
-
-  $('statusCard').innerHTML =
-    (STATUS.signedIn ? '&#9679; Google: ' + esc(STATUS.email || 'signed in') : '&#9675; Google: not signed in') +
-    '<br>' +
-    (STATUS.ajems.verified ? '&#9679; AJEMS: ' + esc(STATUS.ajems.tenant) : '&#9675; AJEMS: not connected') +
-    '<br>&#9679; Tasks: ' + STATUS.taskCount;
 
   renderNextStep();
 }
@@ -139,43 +157,42 @@ function renderNextStep() {
   const box = $('nextStep');
 
   if (!STATUS.ajems.verified) {
-    box.className = 'nextstep';
-    box.innerHTML = '<b>Next:</b> connect AJEMS in section 1 &mdash; your tenant name and secret key.';
+    box.className = 'notice';
+    box.innerHTML = '<span><b>Next:</b> connect AJEMS in section 1, using your tenant name and secret key.</span>';
     return;
   }
   if (!STATUS.signedIn && !UPLOADS.length) {
-    box.className = 'nextstep';
-    box.innerHTML = STATUS.googleConfigured
-      ? '<b>Next:</b> continue with Google, or upload an Excel sheet, in section 2.'
-      : '<b>Next:</b> upload an Excel sheet in section 2.';
+    box.className = 'notice';
+    box.innerHTML = '<span><b>Next:</b> ' + (STATUS.googleConfigured
+      ? 'continue with Google, or upload an Excel sheet, in section 2.'
+      : 'upload an Excel sheet in section 2.') + '</span>';
     return;
   }
   if (!STATUS.signedIn) {
-    box.className = 'nextstep done';
-    box.innerHTML = '<span><b>Ready.</b> You have an uploaded file to work from - ' +
-      'go to <b>Tasks &rsaquo; Add task</b>.</span>' +
-      '<button class="btn btn-primary btn-sm" id="btnGoTasks">Go to Tasks</button>';
+    box.className = 'notice ok';
+    box.innerHTML = '<span><b>Ready.</b> You have an uploaded file to work from. ' +
+      'Go to Tasks and add one.</span>' +
+      '<button class="btn btn-sm" id="btnGoTasks">Go to tasks</button>';
     $('btnGoTasks').addEventListener('click', () => { goto('tasks'); openWizard(null); });
     return;
   }
   // Scopes are granted at consent time, so an older session keeps its old
   // permissions. Without this the symptom is silent: an empty sheet list.
   if (STATUS.signedIn && !STATUS.scopeOk) {
-    box.className = 'nextstep warn';
+    box.className = 'notice warn';
     box.innerHTML =
       '<span><b>Sign in again.</b> This Google session has no Drive permission' +
       ((STATUS.grantedScopes || []).length
         ? ' — it was granted: ' + esc((STATUS.grantedScopes || []).join(', '))
         : '') + '.</span>' +
-      '<a class="btn btn-primary btn-sm" href="/auth/google">Sign in with Google</a>';
+      '<a class="btn btn-sm" href="/auth/google">Sign in with Google</a>';
     return;
   }
 
-  box.className = 'nextstep done';
+  box.className = 'notice ok';
   box.innerHTML =
-    '<span><b>Both connected.</b> Sheets are chosen per task &mdash; ' +
-    'go to <b>Tasks &rsaquo; Add task</b>.</span>' +
-    '<button class="btn btn-primary btn-sm" id="btnGoTasks">Go to Tasks</button>';
+    '<span><b>Both connected.</b> Sources are chosen per task. Go to Tasks and add one.</span>' +
+    '<button class="btn btn-sm" id="btnGoTasks">Go to tasks</button>';
   $('btnGoTasks').addEventListener('click', () => { goto('tasks'); openWizard(null); });
 }
 
@@ -292,7 +309,7 @@ async function loadUploads() {
             <span class="uprow-name">${esc(u.name)}</span>
             <span class="uprow-sub">${u.tabs.length} sheet(s) &middot; ${esc(u.tabs.join(', '))}</span>
           </span>
-          <button class="btn btn-primary btn-sm" data-newfrom="${esc(u.id)}">New task</button>
+          <button class="btn btn-sm" data-newfrom="${esc(u.id)}">New task</button>
           <button class="btn btn-danger btn-sm" data-rmupload="${esc(u.id)}">Remove</button>
         </div>`).join('') + '</div>'
     : '';
@@ -336,38 +353,44 @@ async function loadTasks() {
   $('taskList').innerHTML = TASKS.map(t => {
     const st = SCHED[t.id] || {};
     const r = t.lastResult;
-    const dot = t.pausedReason ? 'err' : (t.enabled ? 'on' : 'off');
-    const when = t.lastRun ? new Date(t.lastRun).toLocaleString() : 'waiting for its first run';
+    const isUpload = t.source === 'excel';
+    const when = t.lastRun ? new Date(t.lastRun).toLocaleString() : 'not run yet';
 
-    let stats = '<span>Last run: <b>' + esc(when) + '</b></span>';
+    const pill = t.pausedReason
+      ? '<span class="status status-warn">Paused</span>'
+      : `<span class="status ${isUpload ? 'status-idle' : 'status-ok'}">` +
+        (isUpload ? 'One-off import' : esc(scheduleLabel(t.schedule))) + '</span>';
+
+    let stats = '<span>Last run <b>' + esc(when) + '</b></span>';
     if (r) {
       stats += `<span>Created <b>${r.created}</b></span>` +
                `<span>Updated <b>${r.updated}</b></span>` +
                `<span>Unchanged <b>${r.unchanged}</b></span>` +
-               (r.failed ? `<span style="color:var(--err)">Failed <b>${r.failed}</b></span>` : '');
+               (r.failed ? `<span style="color:var(--danger)">Failed <b>${r.failed}</b></span>` : '');
     }
-    if (st.running) stats += '<span class="tag">syncing now</span>';
-    else if (st.nextDue && t.source !== 'excel') {
-      stats += '<span>Next: <b>' + new Date(st.nextDue).toLocaleTimeString() + '</b></span>';
+    if (st.running) stats += '<span class="tag">Syncing now</span>';
+    else if (st.nextDue && !isUpload) {
+      stats += '<span>Next <b>' + new Date(st.nextDue).toLocaleTimeString() + '</b></span>';
     }
 
     return `<div class="task">
       <div class="task-head">
-        <div>
-          <div class="task-name"><span class="dot ${dot}"></span>${esc(t.name)}
-            <span class="tag grey">${t.source === 'excel' ? 'One-off import' : esc(scheduleLabel(t.schedule))}</span>
-            ${t.pausedReason ? '<span class="tag err">paused</span>' : ''}
+        <div class="task-main">
+          <div class="task-name">
+            <span class="dot ${t.pausedReason ? 'err' : (t.enabled ? 'on' : '')}"></span>
+            ${esc(t.name)} ${pill}
           </div>
-          <div class="task-path">${t.source === 'excel' ? 'Uploaded file' : 'Google Sheet'} &middot; ${esc(t.spreadsheetName || 'no source')} &nbsp;&rarr;&nbsp; ${esc(t.appTitle || 'no app')}</div>
-          <div class="task-path">${taskRoutes(t)}</div>
+          <div class="task-path">${isUpload ? 'Uploaded file' : 'Google Sheet'} &middot;
+            ${esc(t.spreadsheetName || 'no source')} &rarr; ${esc(t.appTitle || 'no app')}</div>
+          <div class="task-routes">${taskRoutes(t)}</div>
           <div class="task-stats">${stats}</div>
           ${t.pausedReason ? `<div class="msg err">${esc(t.pausedReason)}</div>` : ''}
         </div>
         <div class="task-actions">
-          ${t.source === 'excel'
-            ? `<button class="btn btn-primary btn-sm" data-act="newfile" data-id="${t.id}">Upload new file &amp; sync</button>
+          ${isUpload
+            ? `<button class="btn btn-sm" data-act="newfile" data-id="${t.id}">Upload new file &amp; sync</button>
                <button class="btn btn-ghost btn-sm" data-act="run" data-id="${t.id}">Sync again</button>`
-            : `<button class="btn btn-primary btn-sm" data-act="run" data-id="${t.id}">Sync now</button>`}
+            : `<button class="btn btn-sm" data-act="run" data-id="${t.id}">Sync now</button>`}
           <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${t.id}">Edit</button>
           <button class="btn btn-danger btn-sm" data-act="del" data-id="${t.id}">Delete</button>
         </div>
@@ -385,7 +408,7 @@ function taskRoutes(t) {
   const sels = (t.selections && t.selections.length)
     ? t.selections
     : (t.sheetTab ? [{ tab: t.sheetTab, formTitle: t.formTitle }] : []);
-  if (!sels.length) return '<span class="tag grey">no tabs</span>';
+  if (!sels.length) return '<span class="tag grey">No tabs</span>';
   return sels.map(s => {
     const per = ((t.lastResult && t.lastResult.perTab) || []).find(p => p.tab === s.tab);
     const count = per ? ` <span class="tag grey">${per.created + per.updated} sent</span>` : '';
@@ -672,27 +695,40 @@ function renderGuide(key) {
   if (box.dataset.rendered === '1') return;   // static content, render once
 
   box.innerHTML = `
-    <div class="int-card">
-      <span class="int-logo">${g.icon}</span>
-      <div class="int-main">
-        <div class="int-title">
-          <h2>${esc(g.name)}</h2>
-          <span class="badge-official">AJEMS connector</span>
-        </div>
-        <p class="int-desc">${esc(g.blurb)}</p>
-        <div class="int-meta">
-          ${g.meta.map(m => `<div><span>${esc(m[0])}</span><b>${esc(m[1])}</b></div>`).join('')}
+    <section class="int-card">
+      <div class="int-top">
+        <div class="int-logo">${g.icon}</div>
+        <div class="int-main">
+          <div class="int-title-row">
+            <h1 class="int-title">${esc(g.name)}</h1>
+            <span class="badge-official">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 20 6v6c0 5-3.4 8.4-8 9.5-4.6-1.1-8-4.5-8-9.5V6l8-3.5Z"/><path d="m9 12 2 2 4-4"/></svg>
+              Official
+            </span>
+          </div>
+          <p class="int-desc">${esc(g.blurb)}</p>
         </div>
       </div>
-    </div>
+      <div class="int-meta">
+        ${g.meta.map(m => `<div><div class="meta-val">${esc(m[1])}</div><div class="meta-key">${esc(m[0])}</div></div>`).join('')}
+      </div>
+    </section>
+
+    <hr class="rule">
+
+    <div class="eyebrow">Setup guide</div>
+    <h2 class="h2">Connect ${esc(g.name)} to AJEMS</h2>
+    <p class="h2-sub">Follow these steps in order. It takes about five minutes.</p>
 
     <div class="card guide-intro">
-      <h3 style="font-size:15px;font-weight:640;margin-bottom:4px">Before you begin</h3>
-      <p class="muted" style="margin-bottom:14px">Four things to have ready. It takes a couple of minutes.</p>
+      <div class="card-title" style="margin-bottom:6px">Before you begin</div>
+      <p class="card-note">Four things to have ready.</p>
       <div class="req-grid">
         ${g.requirements.map(r => `<div class="req">${r[0]}<span>${esc(r[1])}</span></div>`).join('')}
       </div>
     </div>
+
+    <hr class="rule">
 
     ${g.steps.map(stepHtml).join('')}
 
@@ -1202,7 +1238,7 @@ function renderAnalysis(tabs) {
   }
 
   $('wAnalysis').innerHTML = good.map(tab => `
-    <div class="crumb"><b>${esc(tab)}</b> — ${WCOLUMNS[tab].length} column(s), ${ROWCOUNTS[tab] || 0} row(s)</div>
+    <div class="crumbline"><b>${esc(tab)}</b> - ${WCOLUMNS[tab].length} column(s), ${ROWCOUNTS[tab] || 0} row(s)</div>
     <table><tr><th>Column</th><th>Detected type</th><th>Filled</th><th>Sample</th></tr>` +
     WCOLUMNS[tab].map(c => `<tr>
       <td><b>${esc(c.column)}</b></td>
@@ -1343,7 +1379,7 @@ function buildTabFormList() {
     const naming = NAMING === i;
     const pick = naming
       ? `<input type="text" data-name="${i}" value="${esc(NAMEDRAFT || sel.tab)}" placeholder="Form name">
-         <button class="btn btn-primary btn-sm" data-mkform="${i}">Create</button>
+         <button class="btn btn-sm" data-mkform="${i}">Create</button>
          <button class="btn btn-ghost btn-sm" data-cancelname="1">Cancel</button>`
       : `<select data-sel="${i}">${opts}</select>
          <button class="btn btn-ghost btn-sm" data-newform="${i}">+ New</button>`;
@@ -1553,7 +1589,7 @@ function buildMappingStep() {
   }
 
   $('wMapping').innerHTML =
-    `<div class="crumb"><b>${esc(sel.tab)}</b> &rarr; ${esc(sel.formTitle)}</div>` +
+    `<div class="crumbline"><b>${esc(sel.tab)}</b> &rarr; ${esc(sel.formTitle)}</div>` +
     '<div class="map-row"><div class="lbl">Sheet column</div><div></div><div class="lbl">AJEMS field</div></div>' +
     cols.map(col => {
       const m = (sel.mapping || []).find(x => x.column === col.column) || {};
