@@ -86,13 +86,15 @@ app.get('/api/status', wrap(async (req, res) => {
   const c = google.cfg();
   const credProblems = google.credentialProblems();
   const org = tenant ? store.getOrg(tenant) : null;
-  const scope = google.scopeStatus(tenant);
+  const auth = store.sessionGoogle(readCookie(req, COOKIE));
+  const scope = google.scopeStatus(auth);
+  const g = auth.get();
 
   res.json({
     // credProblems is deliberately NOT sent: it names environment variables,
     // which is developer detail. The list prints to the terminal at startup.
-    signedIn: !!(org && org.google && org.google.access_token),
-    email: org && org.google ? org.google.email : '',
+    signedIn: !!(g && g.access_token),
+    email: g ? g.email : '',
     scopeOk: scope.ok,
     grantedScopes: scope.granted,
     googleConfigured: credProblems.length === 0,
@@ -191,7 +193,7 @@ app.get('/auth/google', (req, res) => {
   // The state carries the workspace through Google and back, and is checked
   // on return so a callback cannot land on a different workspace.
   const nonce = crypto.randomBytes(12).toString('hex');
-  pendingAuth.set(nonce, { tenant, at: Date.now() });
+  pendingAuth.set(nonce, { sid: readCookie(req, COOKIE), tenant, at: Date.now() });
   res.redirect(google.authUrl(nonce));
 });
 
@@ -209,8 +211,13 @@ app.get('/oauth/callback', wrap(async (req, res) => {
       'Go back to the connector and press Continue with Google again.'));
   }
 
-  const session = await google.exchangeCode(pending.tenant, req.query.code);
-  store.log('ok', '', 'Google connected for "' + pending.tenant + '" as ' + (session.email || 'unknown'));
+  // Tokens land on the browser session that started the sign-in, not on the
+  // workspace, so one person connecting Google does not connect it for
+  // everyone who shares the secret key.
+  const auth = store.sessionGoogle(pending.sid);
+  const session = await google.exchangeCode(auth, req.query.code);
+  store.log('ok', '', 'Google connected on one session of "' + pending.tenant +
+    '" as ' + (session.email || 'unknown'));
   res.redirect('/?signedin=1');
 }));
 
@@ -219,11 +226,11 @@ app.get('/oauth/callback', wrap(async (req, res) => {
  * Scoped to the caller's workspace, so one cannot borrow another's.
  */
 app.get('/api/picker-token', needOrg(async (req, res, tenant) => {
-  res.json({ token: await google.token(tenant) });
+  res.json({ token: await google.token(store.sessionGoogle(readCookie(req, COOKIE))) });
 }));
 
 app.post('/api/google/signout', needOrg(async (req, res, tenant) => {
-  google.signOut(tenant);
+  google.signOut(store.sessionGoogle(readCookie(req, COOKIE)));
   res.json({ ok: true });
 }));
 
@@ -232,12 +239,12 @@ app.post('/api/google/signout', needOrg(async (req, res, tenant) => {
 // ══════════════════════════════════════════════════════════
 
 app.get('/api/sheets', needOrg(async (req, res, tenant) => {
-  res.json({ files: await google.listSpreadsheets(tenant) });
+  res.json({ files: await google.listSpreadsheets(store.sessionGoogle(readCookie(req, COOKIE))) });
 }));
 
 app.get('/api/sheets/:id/tabs', needOrg(async (req, res, tenant) => {
   if (req.query.source === 'excel') return res.json(excel.listTabs(req.params.id));
-  res.json(await google.listTabs(tenant, req.params.id));
+  res.json(await google.listTabs(store.sessionGoogle(readCookie(req, COOKIE)), req.params.id));
 }));
 
 /**
@@ -245,13 +252,13 @@ app.get('/api/sheets/:id/tabs', needOrg(async (req, res, tenant) => {
  * header is always row 1 - every sheet we have seen works that way, and
  * asking the user was one more decision for no benefit.
  */
-async function readTabs(tenant, source, id, tabs) {
+async function readTabs(auth, source, id, tabs) {
   const headers = [];
   const rows = [];
   for (const tab of tabs) {
     const r = source === 'excel'
       ? excel.readTab(id, tab, 1)
-      : await google.readTab(tenant, id, tab, 1);
+      : await google.readTab(auth, id, tab, 1);
     r.headers.forEach(h => { if (!headers.includes(h)) headers.push(h); });
     r.rows.forEach(row => { row.__tab = tab; rows.push(row); });
   }
@@ -266,7 +273,8 @@ function tabsFromQuery(q) {
 app.get('/api/sheets/:id/preview', needOrg(async (req, res, tenant) => {
   const tabs = tabsFromQuery(req.query);
   if (!tabs.length) throw new Error('No tab selected.');
-  const { headers, rows } = await readTabs(tenant, req.query.source, req.params.id, tabs);
+  const { headers, rows } = await readTabs(store.sessionGoogle(readCookie(req, COOKIE)),
+                                           req.query.source, req.params.id, tabs);
   res.json({
     tabs,
     headers,
@@ -354,8 +362,8 @@ app.post('/api/ajems/create-form', needOrg(async (req, res, tenant) => {
              : (req.body.tab ? [req.body.tab] : []);
   if (!tabs.length) throw new Error('No tab selected.');
 
-  const { headers, rows } = await readTabs(
-    tenant, source, source === 'excel' ? uploadId : spreadsheetId, tabs);
+  const { headers, rows } = await readTabs(store.sessionGoogle(readCookie(req, COOKIE)),
+    source, source === 'excel' ? uploadId : spreadsheetId, tabs);
 
   const wanted = Array.isArray(columns) && columns.length
     ? headers.filter(h => columns.includes(h))
@@ -371,6 +379,29 @@ app.post('/api/ajems/create-form', needOrg(async (req, res, tenant) => {
 // ══════════════════════════════════════════════════════════
 // Tasks
 // ══════════════════════════════════════════════════════════
+
+/**
+ * A Google task keeps its own copy of the credential that created it.
+ *
+ * Google is otherwise per browser session, which is what stops one person's
+ * account showing up for everybody who shares the secret key. But a
+ * scheduled run happens with no browser attached, so without this a task
+ * would stop syncing the moment its author signed out.
+ */
+function captureGoogle(req, task) {
+  if (task.source === 'excel') { task.google = null; return; }
+  const g = store.sessionGoogle(readCookie(req, COOKIE)).get();
+  if (g && g.refresh_token) {
+    task.google = g;
+  } else if (g) {
+    // No refresh token means Google will not renew it, so scheduled runs
+    // would fail later. Better to know now.
+    task.google = g;
+    store.log('warn', task.name,
+      'Google did not return a refresh token, so scheduled syncs may stop. ' +
+      'Sign in to Google again to fix it.');
+  }
+}
 
 function readyToSync(t) {
   if (!t.enabled) return false;
@@ -398,6 +429,7 @@ app.get('/api/tasks', needOrg(async (req, res, tenant) => {
 app.post('/api/tasks', needOrg(async (req, res, tenant) => {
   const t = store.newTask();
   Object.assign(t, req.body || {}, { id: t.id });
+  captureGoogle(req, t);
   store.upsertTask(tenant, t);
   res.json(t);
   if (readyToSync(t)) syncSoon(tenant, t.id, 'first run');
@@ -411,6 +443,7 @@ app.put('/api/tasks/:id', needOrg(async (req, res, tenant) => {
   // A changed mapping invalidates the content hashes already stored.
   if (JSON.stringify(t.selections) !== before) store.clearLinks(tenant, t.id);
   if (t.enabled) { t.pausedReason = ''; t.consecutiveFailures = 0; }
+  captureGoogle(req, t);
   store.upsertTask(tenant, t);
   res.json(t);
   if (readyToSync(t)) syncSoon(tenant, t.id, 'saved');
@@ -427,6 +460,13 @@ app.delete('/api/tasks/:id', needOrg(async (req, res, tenant) => {
 }));
 
 app.post('/api/tasks/:id/run', needOrg(async (req, res, tenant) => {
+  // Pressing Sync now refreshes the task's stored credential from whoever
+  // pressed it, so a task keeps working after its original author leaves.
+  const t = store.getTask(tenant, req.params.id);
+  if (t && t.source !== 'excel') {
+    const g = store.sessionGoogle(readCookie(req, COOKIE)).get();
+    if (g) { t.google = g; store.upsertTask(tenant, t); }
+  }
   const result = await engine.runTask(tenant, req.params.id, req.body.trigger || 'manual', {
     seedFirst: !!req.body.seedFirst,
     concurrency: parseInt(req.body.concurrency, 10) || 4

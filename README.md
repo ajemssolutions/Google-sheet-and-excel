@@ -88,14 +88,18 @@ What belongs to a workspace, and is invisible to every other one:
 | | |
 |---|---|
 | AJEMS URL and secret key | its own |
-| Google account and tokens | its own |
+| Google account and tokens | per browser session |
 | Tasks and their sync history | its own |
 | Uploaded spreadsheets | its own |
 
-The Google connection belongs to the workspace, not to your browser session.
-That is deliberate: scheduled syncs need those tokens whether or not anyone is
-signed in, and it means a colleague who signs in with the same key finds
-Google already connected.
+**The Google account belongs to your browser, not to the workspace.** Two
+people sharing a secret key each connect their own; neither sees the other's.
+
+A scheduled run has no browser attached, so a Google task keeps a copy of the
+credential that created it. In practice that means a task carries on syncing
+after its author signs out, using the account it was set up with. Pressing
+**Sync now** refreshes that copy from whoever pressed it, so handing a task
+over is a matter of one click.
 
 Scheduled tasks run for **every** workspace from its own stored credentials,
 so they keep syncing with nobody watching.

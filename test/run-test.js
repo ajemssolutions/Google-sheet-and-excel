@@ -31,7 +31,7 @@ let SHEET = {
 google.fileMeta = async () => ({ id: 'sheet1', name: 'Leads', modifiedTime: SHEET.modifiedTime });
 // TABS lets a test hand back different rows per tab.
 let TABS = null;
-google.readTab  = async (tenant, id, tab) => {
+google.readTab  = async (auth, id, tab) => {
   if (TABS && TABS[tab]) return { headers: SHEET.headers, rows: TABS[tab] };
   return { headers: SHEET.headers, rows: SHEET.rows };
 };

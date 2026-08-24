@@ -84,23 +84,6 @@ function goto(page) {
   if (page.startsWith('guide-')) renderGuide(page);
 }
 
-/** The sidebar clock, as on the rest of the AJEMS product. */
-(function startClock() {
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  function tick() {
-    const t = document.getElementById('clockTime');
-    const d = document.getElementById('clockDate');
-    if (!t || !d) return;
-    const n = new Date();
-    t.textContent = n.getHours() + ':' + String(n.getMinutes()).padStart(2, '0');
-    d.textContent = days[n.getDay()] + ', ' + n.getDate() + ' ' +
-                    months[n.getMonth()] + ', ' + n.getFullYear();
-  }
-  tick();
-  setInterval(tick, 1000);
-})();
 
 // ══════════ boot ══════════
 
@@ -320,42 +303,17 @@ function newTaskFromUpload(uploadId) {
   chooseUpload(uploadId);
 }
 
+/**
+ * The list of uploaded files is no longer shown on Connections. It is still
+ * fetched, because the task wizard offers those files as a source.
+ */
 async function loadUploads() {
   try {
     const d = await api('/api/uploads');
     UPLOADS = d.uploads || [];
-  } catch (e) { UPLOADS = []; }
-
-  $('uploadList').innerHTML = UPLOADS.length
-    ? '<div class="uplist"><div class="label">Uploaded files</div>' + UPLOADS.map(u => `
-        <div class="uprow">
-          <span class="uprow-ic">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path fill="#1D6F42" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <path fill="#A9D5B8" d="M14 2v6h6z"/>
-              <path fill="#fff" d="m9.3 12.2 1.5 2.3-1.6 2.5h1.5l.9-1.5.9 1.5h1.5l-1.6-2.5 1.5-2.3h-1.4l-.9 1.4-.9-1.4z"/>
-            </svg>
-          </span>
-          <span class="uprow-main">
-            <span class="uprow-name">${esc(u.name)}</span>
-            <span class="uprow-sub">${u.tabs.length} sheet(s) &middot; ${esc(u.tabs.join(', '))}</span>
-          </span>
-          <button class="btn btn-sm" data-newfrom="${esc(u.id)}">New task</button>
-          <button class="btn btn-danger btn-sm" data-rmupload="${esc(u.id)}">Remove</button>
-        </div>`).join('') + '</div>'
-    : '';
-
-  $('uploadList').querySelectorAll('[data-newfrom]').forEach(b =>
-    b.addEventListener('click', () => newTaskFromUpload(b.dataset.newfrom)));
-
-  $('uploadList').querySelectorAll('[data-rmupload]').forEach(b =>
-    b.addEventListener('click', async () => {
-      try {
-        await api('/api/uploads/' + encodeURIComponent(b.dataset.rmupload), { method: 'DELETE' });
-        await loadUploads();
-        msg('googleMsg', '');
-      } catch (e) { msg('googleMsg', e.message, 'err'); }
-    }));
+  } catch (e) {
+    UPLOADS = [];
+  }
 }
 
 // ══════════ tasks list ══════════
