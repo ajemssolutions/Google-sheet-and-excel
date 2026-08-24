@@ -58,8 +58,9 @@ button{font-family:inherit;}
   display:flex;flex-direction:column;
   position:sticky;top:0;height:100vh;
 }
-.brand{display:flex;align-items:center;gap:7px;padding:6px 8px;margin-bottom:22px;}
-.brand-word{font-size:21px;font-weight:600;letter-spacing:-.19px;color:#1E3A8A;}
+.brand{display:flex;align-items:center;padding:6px 8px;margin-bottom:22px;}
+/* Supplied at 2x so it stays sharp on a retina screen. */
+.brand-logo{width:168px;height:auto;display:block;}
 
 .nav{display:flex;flex-direction:column;gap:16px;}
 .nav-group{display:flex;flex-direction:column;gap:1px;}
