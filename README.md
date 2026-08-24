@@ -72,6 +72,43 @@ offending value, so you should see a readable page rather than Google's.
 
 ---
 
+## 2b. Running it on a server
+
+Everything above assumes localhost. On a real domain four things change, and
+missing any one of them shows as **"Google sign-in is not set up on this
+server yet"**.
+
+**1. `.env` is not in the repository.** It is git-ignored on purpose, so the
+secret never reaches GitHub. Create it on the server:
+
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_API_KEY=...
+GOOGLE_REDIRECT_URI=https://your-domain/oauth/callback
+PORT=3000
+```
+
+Restart after writing it - the file is only read at startup, and the terminal
+prints exactly what is missing.
+
+**2. Add the live redirect URI in Google Cloud.** Credentials > your OAuth
+client > Authorised redirect URIs > add `https://your-domain/oauth/callback`.
+It must match `GOOGLE_REDIRECT_URI` character for character. Google only
+accepts https on a public host.
+
+**3. Loosen the API key restriction.** If the key is restricted to
+`http://localhost:3000/*` the file picker will not open on the live domain.
+Credentials > your API key > Website restrictions > add `https://your-domain/*`.
+
+**4. Publish the OAuth app**, or only listed test users can sign in. Google
+Auth Platform > Audience > Publish app. Because the app only asks for
+`drive.file`, this needs basic verification, not a security assessment.
+
+The AJEMS side needs none of this. The workspace URL and secret key are typed
+into the UI and stored on the server, so an Excel-only deployment works with no
+Google setup at all.
+
 ## 3. The scope this uses
 
 **`drive.file` and nothing else.**
