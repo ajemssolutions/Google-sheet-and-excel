@@ -41,6 +41,12 @@ async function api(path, opts) {
     );
   }
   const data = await res.json().catch(() => ({ error: 'The server sent a malformed response.' }));
+  if (res.status === 401) {
+    // The session expired, or this workspace was signed out elsewhere.
+    STATUS = Object.assign({}, STATUS, { ajems: { verified: false, tenant: '', baseUrl: '' } });
+    goto('connect');
+    throw new Error(data.error || 'Connect your AJEMS workspace first.');
+  }
   if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
   return data;
 }
@@ -147,7 +153,22 @@ async function refreshStatus() {
     ap.textContent = 'Not connected';
     ap.className = 'status status-warn';
   }
-  if (STATUS.ajems.baseUrl) $('ajemsUrl').value = STATUS.ajems.baseUrl;
+  // Only ever prefill for a workspace this browser is signed in to. A
+  // visitor with no session sees empty boxes, not somebody else's tenant.
+  if (STATUS.ajems.verified && STATUS.ajems.baseUrl) {
+    if (!$('ajemsUrl').value) $('ajemsUrl').value = STATUS.ajems.baseUrl;
+  } else {
+    $('ajemsUrl').value = '';
+    $('ajemsKey').value = '';
+  }
+
+  // Nothing beyond Connections means anything until a workspace is connected.
+  const inOrg = STATUS.ajems.verified;
+  document.querySelectorAll('.nav-item').forEach(b => {
+    if (b.dataset.page === 'tasks') b.style.display = inOrg ? '' : 'none';
+  });
+  $('btnSignOutOrg').style.display = inOrg ? '' : 'none';
+  $('btnAjemsConnect').textContent = inOrg ? 'Reconnect' : 'Connect workspace';
 
   renderNextStep();
 }
@@ -197,6 +218,14 @@ function renderNextStep() {
 }
 
 function bindConnections() {
+  $('btnSignOutOrg').addEventListener('click', async () => {
+    if (!confirm('Sign out of this workspace on this computer?\n\n' +
+                 'Its tasks keep running on the server; you will need the ' +
+                 'secret key to get back in.')) return;
+    await api('/api/signout', { method: 'POST' });
+    location.href = '/';
+  });
+
   $('btnSignIn').addEventListener('click', () => {
     if (!STATUS.googleConfigured) {
       return msg('googleMsg', 'Google sign-in is not set up on this server yet. ' +
@@ -225,8 +254,10 @@ function bindConnections() {
       });
       WORKSPACE = data;
       const forms = data.apps.reduce((n, a) => n + a.forms.length, 0);
-      msg('ajemsMsg', `Connected to "${data.tenant}" — ${data.apps.length} application(s), ${forms} form(s).`, 'ok');
+      msg('ajemsMsg', `Signed in to "${data.tenant}" - ${data.apps.length} application(s), ${forms} form(s).`, 'ok');
       await refreshStatus();
+      await loadUploads();
+      await loadTasks();
     } catch (e) {
       msg('ajemsMsg', e.message, 'err');
     }

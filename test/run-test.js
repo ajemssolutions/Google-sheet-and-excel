@@ -13,6 +13,7 @@ const DATA = path.join(__dirname, '..', 'data.json');
 try { fs.unlinkSync(DATA); } catch (e) {}
 
 const store = require('../lib/store');
+const TENANT = 'kathaa';
 const ajems = require('../lib/ajems');
 const detect = require('../lib/detect');
 
@@ -30,7 +31,7 @@ let SHEET = {
 google.fileMeta = async () => ({ id: 'sheet1', name: 'Leads', modifiedTime: SHEET.modifiedTime });
 // TABS lets a test hand back different rows per tab.
 let TABS = null;
-google.readTab  = async (id, tab) => {
+google.readTab  = async (tenant, id, tab) => {
   if (TABS && TABS[tab]) return { headers: SHEET.headers, rows: TABS[tab] };
   return { headers: SHEET.headers, rows: SHEET.rows };
 };
@@ -79,7 +80,7 @@ function check(name, fn) {
   catch (e) { rejected = /401|rejected/i.test(e.message); }
   check('a wrong secret key is rejected', () => assert.ok(rejected));
 
-  store.set({ ajems: { baseUrl: ws.base, secretKey: 'test-secret-key', tenant: 'kathaa', verified: true } });
+  store.setOrgAjems(TENANT, { baseUrl: ws.base, secretKey: 'test-secret-key' });
 
   console.log('\n4. Task setup');
   const app = ws.data.apps[0];
@@ -110,7 +111,7 @@ function check(name, fn) {
     tab: 'Sheet1', formId: form.form_id, formTitle: form.title,
     postUrl: urls.responses, getUrl: urls.responses, mapping: MAPPING
   }];
-  store.upsertTask(task);
+  store.upsertTask(TENANT, task);
 
   const payload = engine.buildPayload(task, SHEET.rows[0], task.selections[0]);
   check('payload is keyed by AJEMS field key', () =>
@@ -119,13 +120,13 @@ function check(name, fn) {
     assert.strictEqual(payload['number_1000000000005'], 12000));
 
   console.log('\n5. First sync — everything is new');
-  let r = await engine.runTask(task.id, 'test');
+  let r = await engine.runTask(TENANT, task.id, 'test');
   check('3 records created', () => assert.equal(r.created, 3));
   check('nothing updated',   () => assert.equal(r.updated, 0));
   check('no failures',       () => assert.equal(r.failed, 0));
 
   console.log('\n6. Re-run with no changes — nothing should be sent twice');
-  r = await engine.runTask(task.id, 'test');
+  r = await engine.runTask(TENANT, task.id, 'test');
   check('0 created',      () => assert.equal(r.created, 0));
   check('0 updated',      () => assert.equal(r.updated, 0));
   check('3 unchanged',    () => assert.equal(r.unchanged, 3));
@@ -137,7 +138,7 @@ function check(name, fn) {
   console.log('\n7. Edit a row in the sheet — it should UPDATE, not duplicate');
   SHEET.rows[1]['Deal value'] = '99999';
   SHEET.modifiedTime = '2026-08-10T11:00:00.000Z';
-  r = await engine.runTask(task.id, 'test');
+  r = await engine.runTask(TENANT, task.id, 'test');
   check('1 updated',   () => assert.equal(r.updated, 1));
   check('0 created',   () => assert.equal(r.created, 0));
   check('2 unchanged', () => assert.equal(r.unchanged, 2));
@@ -151,7 +152,7 @@ function check(name, fn) {
   console.log('\n8. Append a new row — only that row goes up');
   SHEET.rows.push({ __rowNumber: 5, 'First name': 'Sunil', 'Last name': 'Kadam',
                     Email: 'sunil@x.com', Mobile: '9820011226', 'Deal value': '4200' });
-  r = await engine.runTask(task.id, 'test');
+  r = await engine.runTask(TENANT, task.id, 'test');
   check('1 created',   () => assert.equal(r.created, 1));
   check('3 unchanged', () => assert.equal(r.unchanged, 3));
   check('4 records in AJEMS', () =>
@@ -160,7 +161,7 @@ function check(name, fn) {
   console.log('\n9. Rows reordered — must NOT be seen as new');
   SHEET.rows.reverse();
   SHEET.rows.forEach((row, i) => row.__rowNumber = i + 2);   // row numbers all shift
-  r = await engine.runTask(task.id, 'test');
+  r = await engine.runTask(TENANT, task.id, 'test');
   check('0 created despite every row number changing', () => assert.equal(r.created, 0));
   check('4 unchanged', () => assert.equal(r.unchanged, 4));
 
@@ -168,18 +169,18 @@ function check(name, fn) {
   const t2 = store.newTask();
   Object.assign(t2, task, { id: 't2', identity: 'hash', keyColumns: [],
     selections: [Object.assign({}, task.selections[0])] });
-  store.upsertTask(t2);
-  await engine.runTask('t2', 'test');
+  store.upsertTask(TENANT, t2);
+  await engine.runTask(TENANT, 't2', 'test');
   const before = mock.state.responses[form.form_id].length;
-  await engine.runTask('t2', 'test');
+  await engine.runTask(TENANT, 't2', 'test');
   check('hash mode also skips unchanged rows on re-run', () =>
     assert.equal(mock.state.responses[form.form_id].length, before));
 
   console.log('\n11. Seeding from AJEMS (fresh machine, empty link table)');
-  store.clearLinks(task.id);
-  const seeded = await engine.seedLinks(store.getTask(task.id), store.getTask(task.id).selections[0]);
+  store.clearLinks(TENANT, task.id);
+  const seeded = await engine.seedLinks(TENANT, store.getTask(TENANT, task.id), store.getTask(TENANT, task.id).selections[0]);
   check('links rebuilt from existing AJEMS records', () => assert.ok(seeded.seeded >= 4));
-  r = await engine.runTask(task.id, 'test');
+  r = await engine.runTask(TENANT, task.id, 'test');
   check('after seeding, nothing is re-sent', () => assert.equal(r.created, 0));
 
   console.log('\n12. Multiple tabs feeding one form');
@@ -196,11 +197,11 @@ function check(name, fn) {
       { tab: 'South', formId: form.form_id, formTitle: 'Leads', postUrl: urls.responses, getUrl: urls.responses, mapping: MAPPING }
     ]
   });
-  store.upsertTask(multi);
-  let rm = await engine.runTask('multi', 'test');
+  store.upsertTask(TENANT, multi);
+  let rm = await engine.runTask(TENANT, 'multi', 'test');
   check('rows from both tabs are read', () => assert.equal(rm.rows, 2));
   check('both rows created', () => assert.equal(rm.created, 2));
-  rm = await engine.runTask('multi', 'test');
+  rm = await engine.runTask(TENANT, 'multi', 'test');
   check('re-run sends nothing again', () => assert.equal(rm.created, 0));
 
   // Identical values in two different tabs are two different records.
@@ -216,8 +217,8 @@ function check(name, fn) {
       { tab: 'South', formId: form.form_id, formTitle: 'Leads', postUrl: urls.responses, getUrl: urls.responses, mapping: MAPPING }
     ]
   });
-  store.upsertTask(dup);
-  rm = await engine.runTask('dup', 'test');
+  store.upsertTask(TENANT, dup);
+  rm = await engine.runTask(TENANT, 'dup', 'test');
   check('same row in two tabs counts as two records', () => assert.equal(rm.created, 2));
 
   const err = engine.rowKey(dup, { 'First name': 'Same', __tab: 'North' }, dup.selections[0]) !==
@@ -226,7 +227,7 @@ function check(name, fn) {
 
   // Each tab can target a DIFFERENT form — the point of the per-tab model.
   console.log('');
-  const twoForms = await ajems.post(ws.base + 'forms/', {
+  const twoForms = await ajems.post(TENANT, ws.base + 'forms/', {
     app: app.app_id, title: 'South leads', fields: form.fields
   });
   const ws2 = await ajems.workspaceConfig('http://localhost:4100', 'test-secret-key');
@@ -246,9 +247,9 @@ function check(name, fn) {
       { tab: 'South', formId: southForm.form_id, formTitle: 'South leads', postUrl: southUrls.responses, getUrl: southUrls.responses, mapping: MAPPING }
     ]
   });
-  store.upsertTask(split);
+  store.upsertTask(TENANT, split);
   const beforeSouth = (mock.state.responses[southForm.form_id] || []).length;
-  rm = await engine.runTask('split', 'test');
+  rm = await engine.runTask(TENANT, 'split', 'test');
   check('two tabs, two different forms — both created', () => assert.equal(rm.created, 2));
   check('the second form received exactly its own row', () =>
     assert.equal((mock.state.responses[southForm.form_id] || []).length, beforeSouth + 1));
@@ -263,8 +264,8 @@ function check(name, fn) {
   const bad = store.newTask();
   Object.assign(bad, task, { id: 'bad', selections: [Object.assign({}, task.selections[0],
     { postUrl: 'http://localhost:4100/json_builder/forms/nope/responses/' })] });
-  store.upsertTask(bad);
-  r = await engine.runTask('bad', 'test');
+  store.upsertTask(TENANT, bad);
+  r = await engine.runTask(TENANT, 'bad', 'test');
   check('failures are counted, not thrown', () => assert.ok(r.failed > 0));
   check('the error names the tab and row', () => assert.ok(/row \d+/.test(r.errors[0]) &&
         /Sheet1|Sheet row/.test(r.errors[0]), r.errors[0]));
@@ -310,13 +311,13 @@ function check(name, fn) {
       postUrl: urls.responses, getUrl: urls.responses, mapping: MAPPING
     }]
   });
-  store.upsertTask(xlTask);
+  store.upsertTask(TENANT, xlTask);
 
-  const xr = await engine.runTask('xl', 'test');
+  const xr = await engine.runTask(TENANT, 'xl', 'test');
   check('excel rows reach AJEMS', () => assert.equal(xr.created, 2));
   check('no Google call was needed', () => assert.equal(xr.failed, 0));
 
-  const xr2 = await engine.runTask('xl', 'test');
+  const xr2 = await engine.runTask(TENANT, 'xl', 'test');
   check('re-running an excel task sends nothing again', () => assert.equal(xr2.created, 0));
 
   check('"12,000" is sent as the number 12000', () => {
@@ -325,7 +326,7 @@ function check(name, fn) {
   });
 
   excel.remove(uploadId);
-  const gone = await engine.runTask('xl', 'test');
+  const gone = await engine.runTask(TENANT, 'xl', 'test');
   check('a missing file is reported, not thrown', () =>
     assert.ok(/no longer on disk/i.test(gone.error || '')));
 

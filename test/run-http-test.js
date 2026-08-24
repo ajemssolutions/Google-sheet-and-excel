@@ -21,20 +21,31 @@ function check(name, fn) {
 
 const BASE = 'http://localhost:3011';
 
+let COOKIE = '';   // the session handed back by /api/ajems/connect
+
+function grabCookie(r) {
+  const set = r.headers.get('set-cookie');
+  if (set) COOKIE = set.split(';')[0];
+}
+
 async function get(p) {
-  const r = await fetch(BASE + p);
+  const r = await fetch(BASE + p, { headers: COOKIE ? { Cookie: COOKIE } : {} });
+  grabCookie(r);
   return { status: r.status, body: await r.json().catch(() => null) };
 }
 async function del(p) {
-  const r = await fetch(BASE + p, { method: 'DELETE' });
+  const r = await fetch(BASE + p, {
+    method: 'DELETE',
+    headers: COOKIE ? { Cookie: COOKIE } : {}
+  });
+  grabCookie(r);
   return { status: r.status, body: await r.json().catch(() => null) };
 }
 async function post(p, body) {
-  const r = await fetch(BASE + p, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  });
+  const h = { 'Content-Type': 'application/json' };
+  if (COOKIE) h.Cookie = COOKIE;
+  const r = await fetch(BASE + p, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });
+  grabCookie(r);
   return { status: r.status, body: await r.json().catch(() => null) };
 }
 
@@ -60,7 +71,7 @@ async function post(p, body) {
   check('reports not signed in', () => assert.equal(r.body.signedIn, false));
   check('scopeOk is present', () => assert.equal(typeof r.body.scopeOk, 'boolean'));
 
-  console.log('\n2. Connect to AJEMS');
+  console.log('\n2. Connect to AJEMS (this is the sign-in)');
   r = await post('/api/ajems/connect', {
     baseUrl: 'http://localhost:4100', secretKey: 'test-secret-key'
   });
@@ -191,8 +202,16 @@ async function post(p, body) {
     assert.ok(r.status >= 400);
     assert.ok(/task/i.test(r.body.error || ''), r.body.error);
   });
+  // Deleting the last task that used a file takes the file with it.
   await del('/api/tasks/' + holder);
-  r = await del('/api/uploads/' + encodeURIComponent(upId));
+  r = await get('/api/uploads');
+  check('deleting the task removes its file too', () =>
+    assert.ok(!r.body.uploads.some(u => u.id === upId)));
+
+  // A file uploaded but never used by a task can still be removed by hand.
+  r = await post('/api/uploads', { name: 'spare.xlsx', data: fs.readFileSync(fx).toString('base64') });
+  const spare = r.body.id;
+  r = await del('/api/uploads/' + encodeURIComponent(spare));
   check('an unused upload can be removed', () => assert.equal(r.status, 200));
 
   console.log('\n8c. Tasks belong to an organisation');
@@ -207,6 +226,11 @@ async function post(p, body) {
   check('another organisation cannot see it', () =>
     assert.ok(!r.body.tasks.some(t => t.id === orgATask)));
   check('the other tenant is reported', () => assert.equal(r.body.tenant, 'otherorg'));
+
+  // Signed in as the other workspace, org A's task must be untouchable.
+  r = await post('/api/tasks/' + orgATask + '/run', {});
+  check('another organisation cannot run its tasks', () =>
+    assert.ok(r.status >= 400 || /not found/i.test(JSON.stringify(r.body))));
 
   await post('/api/ajems/connect', { baseUrl: 'http://localhost:4100', secretKey: 'test-secret-key' });
   r = await get('/api/tasks');
@@ -275,6 +299,27 @@ async function post(p, body) {
   r = await post('/api/tasks/' + rfTask + '/run', {});
   check('the task still works after the refusal', () => assert.ok(!r.body.error));
   await del('/api/tasks/' + rfTask);
+
+  console.log('\n8e. Signed out means an empty app');
+  const keep = COOKIE;
+  COOKIE = '';
+  r = await get('/api/status');
+  check('status works signed out', () => assert.equal(r.status, 200));
+  check('no workspace is reported', () => {
+    assert.equal(r.body.ajems.verified, false);
+    assert.equal(r.body.ajems.tenant, '');
+    assert.equal(r.body.ajems.baseUrl, '');
+  });
+  check('no Google account is reported', () => assert.equal(r.body.signedIn, false));
+  check('no task count leaks', () => assert.equal(r.body.taskCount, 0));
+
+  for (const route of ['/api/tasks', '/api/uploads', '/api/sheets', '/api/ajems/workspace']) {
+    r = await get(route);
+    check('signed out: ' + route + ' is refused', () => assert.equal(r.status, 401));
+  }
+  r = await post('/api/uploads', { name: 'x.xlsx', data: 'AAA' });
+  check('signed out: uploading is refused', () => assert.equal(r.status, 401));
+  COOKIE = keep;
 
   console.log('\n9. Bad input is rejected, server stays up');
   r = await post('/api/ajems/connect', { baseUrl: '', secretKey: '' });

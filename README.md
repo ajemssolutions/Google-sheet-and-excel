@@ -72,6 +72,39 @@ offending value, so you should see a readable page rather than Google's.
 
 ---
 
+## 2a. Workspaces and signing in
+
+The connector serves many AJEMS workspaces from one deployment. Everything is
+scoped to the workspace that owns it, so opening the URL shows an empty app
+until you sign in.
+
+**The secret key is the sign-in.** Entering a workspace name and its key on
+the Connections page proves you hold that key: the server asks AJEMS, and only
+a key AJEMS accepts creates a session. The browser gets a cookie holding a
+random id and nothing else, valid for 30 days. **Sign out** ends it.
+
+What belongs to a workspace, and is invisible to every other one:
+
+| | |
+|---|---|
+| AJEMS URL and secret key | its own |
+| Google account and tokens | its own |
+| Tasks and their sync history | its own |
+| Uploaded spreadsheets | its own |
+
+The Google connection belongs to the workspace, not to your browser session.
+That is deliberate: scheduled syncs need those tokens whether or not anyone is
+signed in, and it means a colleague who signs in with the same key finds
+Google already connected.
+
+Scheduled tasks run for **every** workspace from its own stored credentials,
+so they keep syncing with nobody watching.
+
+Data sits in `data.json`, keyed by workspace, in a shape close to how a
+database would hold it - an orgs table and a sessions table - so moving off the
+file later is a port rather than a redesign. **Secret keys are stored in plain
+text**, so the file and the server need protecting until that move happens.
+
 ## 2b. Running it on a server
 
 Everything above assumes localhost. On a real domain four things change, and
